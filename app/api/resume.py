@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from typing import List
-import spacy
+
 
 from app.services.resume_parser  import (
     extract_text_from_pdf, extract_email, extract_phone,
@@ -13,9 +13,7 @@ from app.database                import supabase
 
 router = APIRouter()
 
-print("Loading spaCy model...")
-nlp = spacy.load("en_core_web_sm")
-print("spaCy loaded!")
+nlp=None
 
 
 @router.post("/parse-and-save")
