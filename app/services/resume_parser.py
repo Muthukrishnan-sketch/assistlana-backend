@@ -5,10 +5,8 @@ import io
 
 
 def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> str:
-    """Extract text from PDF or DOCX"""
     text = ""
 
-    # Handle DOCX files
     if filename.lower().endswith(".docx"):
         try:
             import zipfile
@@ -17,11 +15,11 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> str:
                 with z.open("word/document.xml") as f:
                     tree = ET.parse(f)
                     root = tree.getroot()
-                    ns   = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
                     paras = root.findall(".//w:p", ns)
                     for para in paras:
                         texts = para.findall(".//w:t", ns)
-                        line  = " ".join(t.text for t in texts if t.text)
+                        line = " ".join(t.text for t in texts if t.text)
                         if line.strip():
                             text += line + "\n"
             return text.strip()
@@ -29,95 +27,94 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> str:
             print(f"DOCX error: {e}")
             return ""
 
-    # Handle PDF files
+    # Try pdfplumber first
     try:
+        import pdfplumber
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
-    except Exception:
-        pass
+        if text.strip():
+            print(f"pdfplumber extracted {len(text)} chars")
+            return text.strip()
+    except Exception as e:
+        print(f"pdfplumber error: {e}")
 
-    if not text.strip():
-        try:
-            reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-            for page in reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-        except Exception:
-            pass
+    # Try PyPDF2 as fallback
+    try:
+        import PyPDF2
+        reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        if text.strip():
+            print(f"PyPDF2 extracted {len(text)} chars")
+            return text.strip()
+    except Exception as e:
+        print(f"PyPDF2 error: {e}")
 
-    return text.strip()
+    # Try reading as raw text
+    try:
+        text = file_bytes.decode("utf-8", errors="ignore")
+        if len(text) > 100:
+            print(f"Raw decode extracted {len(text)} chars")
+            return text.strip()
+    except Exception as e:
+        print(f"Raw decode error: {e}")
+
+    print("All extraction methods failed!")
+    return ""
 
 
 def extract_email(text: str) -> str:
-    """Extract real email - skip generated ones"""
-    pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-    matches  = re.findall(pattern, text)
-    # Filter out image/file extensions
+    # Clean text first - remove spaces that might break email
+    clean = re.sub(r'\s+', ' ', text)
+
+    pattern = r'\b[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+    matches = re.findall(pattern, clean)
+
+    # Filter invalid ones
+    invalid_ext = ['.png', '.jpg', '.pdf', '.svg', '.gif', '.ico']
     valid = [m for m in matches if not any(
-        m.lower().endswith(ext) for ext in ['.png','.jpg','.pdf','.com.png']
+        m.lower().endswith(ext) for ext in invalid_ext
     )]
+
     return valid[0] if valid else ""
 
 
 def extract_phone(text: str) -> str:
-    """Extract Indian phone number properly"""
-    clean = re.sub(r'[^\d\s\+\-\(\)]', ' ', text)
+    # Remove all non-essential chars but keep digits, spaces, +, -
     lines = text.split('\n')
-
-    # Search line by line for phone patterns
     for line in lines:
-        # Pattern: +91 XXXXXXXXXX
-        m = re.search(r'\+91[\s\-]?([6-9]\d{9})', line)
+        # Remove common noise
+        clean = re.sub(r'[^\d\s\+\-]', ' ', line)
+
+        # +91 followed by 10 digits
+        m = re.search(r'\+?\s*91\s*[\-]?\s*([6-9]\d{9})', clean)
         if m:
             return "+91" + m.group(1)
 
-        # Pattern: 91XXXXXXXXXX
-        m = re.search(r'\b91([6-9]\d{9})\b', line)
-        if m:
-            return "+91" + m.group(1)
-
-        # Pattern: standalone 10-digit
-        m = re.search(r'\b([6-9]\d{9})\b', line)
+        # Standalone 10 digit number starting with 6-9
+        m = re.search(r'\b([6-9]\d{9})\b', clean)
         if m:
             return m.group(1)
 
-        # Pattern: XXXXX XXXXX
-        m = re.search(r'\b([6-9]\d{4})[\s](\d{5})\b', line)
+        # XXXXX XXXXX format
+        m = re.search(r'\b([6-9]\d{4})\s+(\d{5})\b', clean)
         if m:
             return m.group(1) + m.group(2)
+
+    # Last resort - search entire text
+    m = re.search(r'([6-9]\d{9})', re.sub(r'\s', '', text))
+    if m:
+        return m.group(0)
 
     return ""
 
 
-def extract_name(text: str, nlp) -> str:
-    """Extract candidate name - multiple strategies with location filtering"""
-
-    # Known locations/places to skip if detected as PERSON
-    LOCATION_WORDS = {
-        'tamil', 'nadu', 'kerala', 'karnataka', 'andhra', 'pradesh',
-        'chennai', 'mumbai', 'bangalore', 'hyderabad', 'delhi', 'india',
-        'street', 'road', 'nagar', 'district', 'state', 'city', 'village',
-        'tambaram', 'villupuram', 'coimbatore', 'madurai',
-    }
-
-    # Strategy 1: spaCy NER on first 400 chars
-    doc = nlp(text[:400])
-    for ent in doc.ents:
-        if ent.label_ == "PERSON":
-            name = ent.text.strip()
-            name_lw = name.lower()
-            # Must have 2+ words, no digits, not a location
-            if (len(name.split()) >= 2 and
-                not any(c.isdigit() for c in name) and
-                not any(loc in name_lw for loc in LOCATION_WORDS) and
-                len(name) < 50):
-                return name
-
-    # Strategy 2: Scan first 10 lines for name-like line
+def extract_name(text: str, nlp=None) -> str:
     lines = [l.strip() for l in text.split('\n') if l.strip()]
 
     SKIP_WORDS = [
@@ -128,47 +125,30 @@ def extract_name(text: str, nlp) -> str:
         'tamil', 'nadu', 'kerala', 'india', 'street', 'road',
         'nagar', 'district', 'state', 'city', 'village', 'near',
         'post', 'pin', 'education', 'experience', 'skills',
-        'objective', 'declaration', 'project', 'intern',
+        'declaration', 'project', 'intern', 'full', 'stack',
     ]
 
     for line in lines[:10]:
         line_lw = line.lower()
-
-        # Skip if contains skip words
         if any(w in line_lw for w in SKIP_WORDS):
             continue
-
-        # Skip if contains special chars
-        if any(c in line for c in ['@', '|', '/', '\\', '+', ':', ';']):
+        if any(c in line for c in ['@', '|', '/', '\\', '+', ':', ';', ',']):
             continue
-
-        # Skip if looks like address (has numbers + letters mixed)
-        if re.search(r'\d', line) and re.search(r'[A-Za-z]{3}', line):
+        if re.search(r'\d', line):
             continue
-
-        # Skip if too long (likely a sentence)
         if len(line) > 45:
             continue
-
         words = line.split()
-
-        # Good name: 1-4 words, all start with capital or are short connectors
         if 1 <= len(words) <= 4:
-            # All words should start with uppercase
             if all(w[0].isupper() for w in words if len(w) > 1):
-                # Make sure it's not all caps header like "EDUCATION"
                 if not line.isupper() or len(words) >= 2:
                     return line.strip()
 
-    # Strategy 3: Look for ALL CAPS name (common in Indian resumes)
+    # ALL CAPS name strategy
     for line in lines[:8]:
         words = line.split()
         if 1 <= len(words) <= 4 and line.isupper() and len(line) > 3:
-            # Convert "MUTHUKRISHNAN S" to "Muthukrishnan S"
-            name = ' '.join(w.capitalize() for w in words)
-            name_lw = name.lower()
-            if not any(loc in name_lw for loc in LOCATION_WORDS):
-                return name
+            return ' '.join(w.capitalize() for w in words)
 
     return lines[0][:50] if lines else "Unknown"
 

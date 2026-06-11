@@ -209,3 +209,6 @@ async def match_jd(request: JDMatchRequest):
         return {"success": True, "jd_match": match_score}
     except Exception as e:
         return {"success": False, "error": str(e)}
+print(f"=== EXTRACTED TEXT (first 500 chars) ===")
+print(text[:500])
+print(f"=== END ===")
