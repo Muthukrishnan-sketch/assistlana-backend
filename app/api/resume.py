@@ -124,6 +124,9 @@ async def parse_batch(files: List[UploadFile] = File(...)):
         try:
             file_bytes = await file.read()
             text = extract_text_from_pdf(file_bytes, file.filename)
+            print(f"=== FILE: {file.filename}, SIZE: {len(file_bytes)} bytes ===")
+            print(f"=== EXTRACTED: {len(text)} chars ===")
+            print(f"=== TEXT SAMPLE: {text[:300]} ===")
             if not text:
                 results.append({"filename": file.filename, "success": False, "error": "No text"})
                 continue
