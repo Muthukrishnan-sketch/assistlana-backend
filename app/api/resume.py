@@ -30,9 +30,10 @@ async def parse_and_save(
     try:
         file_bytes = await file.read()
         text       = extract_text_from_pdf(file_bytes, file.filename)
+        
         print(f"=== FILE: {file.filename}, SIZE: {len(file_bytes)} bytes ===")
         print(f"=== EXTRACTED: {len(text)} chars ===")
-        print(f"=== TEXT SAMPLE: {text[:300]} ===")
+        print(f"=== SAMPLE: {repr(text[:200])} ===")
 
         if not text:
             return JSONResponse(content={
