@@ -27,21 +27,30 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> str:
             print(f"DOCX error: {e}")
             return ""
 
-    # Try pdfplumber first
+    # Try pdfplumber with layout settings for multi-column PDFs
     try:
         import pdfplumber
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             for page in pdf.pages:
+                # Try normal extraction first
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
+                else:
+                    # Try with x_tolerance for multi-column
+                    page_text = page.extract_text(
+                        x_tolerance=3,
+                        y_tolerance=3
+                    )
+                    if page_text:
+                        text += page_text + "\n"
         if text.strip():
-            print(f"pdfplumber extracted {len(text)} chars")
+            print(f"pdfplumber OK: {len(text)} chars")
             return text.strip()
     except Exception as e:
         print(f"pdfplumber error: {e}")
 
-    # Try PyPDF2 as fallback
+    # Try PyPDF2
     try:
         import PyPDF2
         reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
@@ -50,21 +59,35 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> str:
             if page_text:
                 text += page_text + "\n"
         if text.strip():
-            print(f"PyPDF2 extracted {len(text)} chars")
+            print(f"PyPDF2 OK: {len(text)} chars")
             return text.strip()
     except Exception as e:
         print(f"PyPDF2 error: {e}")
 
-    # Try reading as raw text
+    # Try pdfminer
     try:
-        text = file_bytes.decode("utf-8", errors="ignore")
-        if len(text) > 100:
-            print(f"Raw decode extracted {len(text)} chars")
+        from pdfminer.high_level import extract_text as pdfminer_extract
+        text = pdfminer_extract(io.BytesIO(file_bytes))
+        if text and text.strip():
+            print(f"pdfminer OK: {len(text)} chars")
             return text.strip()
+    except Exception as e:
+        print(f"pdfminer error: {e}")
+
+    # Raw byte decode as last resort
+    try:
+        raw = file_bytes.decode("latin-1", errors="ignore")
+        # Extract readable ASCII text
+        import re
+        readable = re.findall(r'[\x20-\x7E]{4,}', raw)
+        text = ' '.join(readable)
+        if len(text) > 200:
+            print(f"Raw decode OK: {len(text)} chars")
+            return text
     except Exception as e:
         print(f"Raw decode error: {e}")
 
-    print("All extraction methods failed!")
+    print("ALL extraction failed!")
     return ""
 
 
