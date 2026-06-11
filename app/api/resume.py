@@ -30,6 +30,9 @@ async def parse_and_save(
     try:
         file_bytes = await file.read()
         text       = extract_text_from_pdf(file_bytes, file.filename)
+        print(f"=== FILE: {file.filename}, SIZE: {len(file_bytes)} bytes ===")
+        print(f"=== EXTRACTED: {len(text)} chars ===")
+        print(f"=== TEXT SAMPLE: {text[:300]} ===")
 
         if not text:
             return JSONResponse(content={
@@ -209,6 +212,3 @@ async def match_jd(request: JDMatchRequest):
         return {"success": True, "jd_match": match_score}
     except Exception as e:
         return {"success": False, "error": str(e)}
-print(f"=== EXTRACTED TEXT (first 500 chars) ===")
-print(text[:500])
-print(f"=== END ===")
