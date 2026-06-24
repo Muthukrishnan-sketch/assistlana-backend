@@ -383,3 +383,4 @@ def extract_education(text: str) -> dict:
                 return {"level": degree}
 
     return {"level": "Unknown"}
+
