@@ -2,6 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.resume import router as resume_router
 
+from app.api.whatsapp import router as whatsapp_router
+
+from app.api.admin import router as admin_router
+
+
 app = FastAPI(
     title       = "ASSISTLANA AI Resume Screening API",
     description = "Real AI-powered resume parsing, scoring and matching",
@@ -17,7 +22,8 @@ app.add_middleware(
 )
 
 app.include_router(resume_router, prefix="/api/resume", tags=["Resume"])
-
+app.include_router(whatsapp_router, prefix="/api/whatsapp")
+app.include_router(admin_router, prefix="/api/admin")
 
 @app.get("/")
 def root():
